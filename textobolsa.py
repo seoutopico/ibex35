@@ -3,8 +3,6 @@ from fastapi.responses import PlainTextResponse
 import yfinance as yf
 import pandas as pd
 from ta import trend, momentum, volatility
-from datetime import datetime
-import asyncio
 
 app = FastAPI()
 
@@ -16,8 +14,6 @@ ibex35_symbols = [
     'COL.MC', 'ELE.MC', 'ENR.MC', 'MEL.MC', 'PHM.MC', 'RED.MC', 'SGRE.MC',
     'SOL.MC', 'NTGY.MC', 'SAB.MC'
 ]
-
-CACHE_FILE = 'ibex35_analysis.txt'
 
 def obtener_datos_actuales(symbol, period='6mo', interval='1d'):
     try:
@@ -79,6 +75,7 @@ def analizar_accion_semana_siguiente(symbol):
 
     subir = puntuación >= 3
 
+    # Devolvemos los resultados en texto plano
     return f"""
 Símbolo: {symbol}
 Precio Actual: {round(ultimo['Close'], 2)}
@@ -95,46 +92,16 @@ Puntuación Señal: {puntuación}
 Predicción Subida 3%: {'Sí' if subir else 'No'}
 """
 
-async def actualizar_datos():
-    print("Iniciando actualización de datos...")
-    resultados = [f"Análisis IBEX 35 - Actualizado el {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"]
+@app.get("/analisis", response_class=PlainTextResponse)
+async def analisis_ibex35():
+    resultados = []
     for symbol in ibex35_symbols:
         resultado = analizar_accion_semana_siguiente(symbol)
         if resultado:
             resultados.append(resultado)
     
-    with open(CACHE_FILE, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(resultados))
-    print("Actualización de datos completada.")
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(actualizar_periodicamente())
-
-async def actualizar_periodicamente():
-    while True:
-        await actualizar_datos()
-        # Espera hasta la próxima medianoche
-        now = datetime.now()
-        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if next_run <= now:
-            next_run = next_run.replace(day=next_run.day + 1)
-        seconds_until_next_run = (next_run - now).total_seconds()
-        print(f"Próxima actualización en {seconds_until_next_run} segundos.")
-        await asyncio.sleep(seconds_until_next_run)
-
-@app.get("/analisis", response_class=PlainTextResponse)
-async def analisis_ibex35():
-    try:
-        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
-            cached_data = f.read()
-            print(f"Datos cacheados devueltos. Timestamp: {cached_data.split('\n')[0]}")
-            return cached_data
-    except FileNotFoundError:
-        print("Archivo de caché no encontrado. Generando nuevos datos...")
-        await actualizar_datos()
-        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
-            return f.read()
+    # Unimos los resultados en texto plano
+    return '\n\n'.join(resultados)
 
 if __name__ == "__main__":
     import uvicorn
