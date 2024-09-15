@@ -3,6 +3,8 @@ from fastapi.responses import PlainTextResponse
 import yfinance as yf
 import pandas as pd
 from ta import trend, momentum, volatility
+from datetime import datetime, timedelta
+import asyncio
 
 app = FastAPI()
 
@@ -14,6 +16,10 @@ ibex35_symbols = [
     'COL.MC', 'ELE.MC', 'ENR.MC', 'MEL.MC', 'PHM.MC', 'RED.MC', 'SGRE.MC',
     'SOL.MC', 'NTGY.MC', 'SAB.MC'
 ]
+
+# Caché y tiempo de la última actualización
+cache_data = None
+last_update = None
 
 def obtener_datos_actuales(symbol, period='6mo', interval='1d'):
     try:
@@ -75,7 +81,6 @@ def analizar_accion_semana_siguiente(symbol):
 
     subir = puntuación >= 3
 
-    # Devolvemos los resultados en texto plano
     return f"""
 Símbolo: {symbol}
 Precio Actual: {round(ultimo['Close'], 2)}
@@ -92,16 +97,40 @@ Puntuación Señal: {puntuación}
 Predicción Subida 3%: {'Sí' if subir else 'No'}
 """
 
-@app.get("/analisis", response_class=PlainTextResponse)
-async def analisis_ibex35():
+async def actualizar_cache():
+    global cache_data, last_update
     resultados = []
     for symbol in ibex35_symbols:
         resultado = analizar_accion_semana_siguiente(symbol)
         if resultado:
             resultados.append(resultado)
     
-    # Unimos los resultados en texto plano
-    return '\n\n'.join(resultados)
+    # Actualiza la caché con los nuevos resultados
+    cache_data = '\n\n'.join(resultados)
+    last_update = datetime.now()
+
+async def actualizar_cache_periodicamente():
+    while True:
+        now = datetime.now()
+        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if next_run <= now:
+            next_run = next_run + timedelta(days=1)
+        seconds_until_next_run = (next_run - now).total_seconds()
+        await asyncio.sleep(seconds_until_next_run)
+        await actualizar_cache()
+
+@app.on_event("startup")
+async def startup_event():
+    # Inicia la tarea para actualizar la caché a medianoche
+    asyncio.create_task(actualizar_cache_periodicamente())
+
+@app.get("/analisis", response_class=PlainTextResponse)
+async def analisis_ibex35():
+    global cache_data, last_update
+    # Si no hay caché o han pasado más de 24 horas, actualiza
+    if cache_data is None or (datetime.now() - last_update).total_seconds() > 86400:
+        await actualizar_cache()
+    return cache_data
 
 if __name__ == "__main__":
     import uvicorn
