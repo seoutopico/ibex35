@@ -1,5 +1,6 @@
 fastapi[all]
-fastapi==0.98.0
-uvicorn==0.22.0
-yfinance==0.2.31
-pandas==2.0.3
+uvicorn
+yfinance
+pandas
+numpy
+
