@@ -1,7 +1,11 @@
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 import yfinance as yf
 import pandas as pd
 from ta import trend, momentum, volatility
+import json
+from datetime import datetime
+import asyncio
 
 app = FastAPI()
 
@@ -13,6 +17,8 @@ ibex35_symbols = [
     'COL.MC', 'ELE.MC', 'ENR.MC', 'MEL.MC', 'PHM.MC', 'RED.MC', 'SGRE.MC',
     'SOL.MC', 'NTGY.MC', 'SAB.MC'
 ]
+
+CACHE_FILE = 'ibex35_analysis.json'
 
 def obtener_datos_actuales(symbol, period='6mo', interval='1d'):
     try:
@@ -90,14 +96,49 @@ def analizar_accion_semana_siguiente(symbol):
         'Predicción_Subida_3%': subir
     }
 
-@app.get("/analisis")
-async def analisis_ibex35():
+async def actualizar_datos():
+    print("Iniciando actualización de datos...")
     resultados = []
     for symbol in ibex35_symbols:
         resultado = analizar_accion_semana_siguiente(symbol)
         if resultado:
             resultados.append(resultado)
-    return resultados
+    
+    with open(CACHE_FILE, 'w') as f:
+        json.dump({
+            'timestamp': datetime.now().isoformat(),
+            'data': resultados
+        }, f)
+    print("Actualización de datos completada.")
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(actualizar_periodicamente())
+
+async def actualizar_periodicamente():
+    while True:
+        await actualizar_datos()
+        # Espera hasta la próxima medianoche
+        now = datetime.now()
+        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if next_run <= now:
+            next_run = next_run.replace(day=next_run.day + 1)
+        seconds_until_next_run = (next_run - now).total_seconds()
+        print(f"Próxima actualización en {seconds_until_next_run} segundos.")
+        await asyncio.sleep(seconds_until_next_run)
+
+@app.get("/analisis")
+async def analisis_ibex35():
+    try:
+        with open(CACHE_FILE, 'r') as f:
+            cached_data = json.load(f)
+            print(f"Datos cacheados devueltos. Timestamp: {cached_data['timestamp']}")
+            return JSONResponse(content=cached_data)
+    except FileNotFoundError:
+        print("Archivo de caché no encontrado. Generando nuevos datos...")
+        await actualizar_datos()
+        with open(CACHE_FILE, 'r') as f:
+            return JSONResponse(content=json.load(f))
 
 if __name__ == "__main__":
     import uvicorn
