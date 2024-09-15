@@ -37,6 +37,10 @@ def analizar_accion_semana_siguiente(symbol):
     data = obtener_datos_actuales(symbol)
     if data is None or len(data) < 60:
         return None
+    
+      # Fechas de los datos consultados
+    start_date = data.index[0].strftime('%Y-%m-%d')
+    end_date = data.index[-1].strftime('%Y-%m-%d')
 
     # Aplicar los indicadores técnicos
     data['EMA_50'] = trend.EMAIndicator(close=data['Close'], window=50).ema_indicator()
@@ -83,6 +87,7 @@ def analizar_accion_semana_siguiente(symbol):
 
     return f"""
 Símbolo: {symbol}
+Fecha del análisis: Desde {start_date} hasta {end_date}
 Precio Actual: {round(ultimo['Close'], 2)}
 EMA_50: {round(ultimo['EMA_50'], 2) if not pd.isna(ultimo['EMA_50']) else 'N/A'}
 RSI_14: {round(ultimo['RSI_14'], 2)}
